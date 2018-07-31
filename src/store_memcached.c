@@ -245,13 +245,12 @@ struct storage_backend * init_storage_memcached(const char * connection_string) 
 #else
     struct storage_backend * store = malloc(sizeof(struct storage_backend));
     memcached_st * ctx;
-    char * connection_str = "--server=localhost";
 
     if (store == NULL) {
         log_message(STORE_LOGLVL_ERR,"init_storage_memcached: Failed to allocate memory for storage backend");
         return NULL;
     }
-    ctx = memcached(connection_str, strlen(connection_str));
+    ctx = memcached(connection_string, strlen(connection_string));
     if (ctx == NULL) {
         log_message(STORE_LOGLVL_ERR,"init_storage_memcached: Failed to create memcached ctx");
         free(store);

@@ -63,6 +63,9 @@ void log_message(int log_lvl, const char *format, ...) {
 struct storage_backend * init_storage_backend(const char * options) {
     struct stat st;
     struct storage_backend * store = NULL;
+	UriParserStateA state;
+	UriUriA store_uri;
+    char * store_uri_scheme, memcached_config;
 
     //Determine the correct storage backend based on the options string
     if (strlen(options) == 0) {
@@ -83,33 +86,56 @@ struct storage_backend * init_storage_backend(const char * options) {
             return NULL;
         }
     }
-    if (strstr(options,"rados://") == options) {
-        log_message(STORE_LOGLVL_DEBUG, "init_storage_backend: initialising rados storage backend at: %s", options);
-        store = init_storage_rados(options);
-        return store;
-    }
-    if (strstr(options,"memcached://") == options) {
-        log_message(STORE_LOGLVL_DEBUG, "init_storage_backend: initialising memcached storage backend at: %s", options);
-        store = init_storage_memcached(options);
-        return store;
-    }
-    if (strstr(options,"ro_http_proxy://") == options) {
-        log_message(STORE_LOGLVL_DEBUG, "init_storage_backend: initialising ro_http_proxy storage backend at: %s", options);
-        store = init_storage_ro_http_proxy(options);
-        return store;
-    }
-    if (strstr(options,"composite:{") == options) {
-        log_message(STORE_LOGLVL_DEBUG, "init_storage_backend: initialising ro_composite storage backend at: %s", options);
-        store = init_storage_ro_composite(options);
-        return store;
-    }
-    if (strstr(options,"null://") == options) {
-        log_message(STORE_LOGLVL_DEBUG, "init_storage_backend: initialising null storage backend at: %s", options);
-        store = init_storage_null();
-        return store;
-    }
 
+    // Ok so if it's not starting with a /, it's a URI and we can parse it (maybe..)
+
+	state.uri = &store_uri;
+	if (uriParseUriA(&state, options) != URI_SUCCESS) {
+		uriFreeUriMembersA(&store_uri);
+		log_message(STORE_LOGLVL_ERR, "init_storage_backend: %s is not a parseable URL at %s (code %d)", options, state->errorPos, state->errorCode);
+		return NULL;
+	}
+	store_uri_scheme = uri_fetch_part(&store_uri->scheme);
+    if(store_uri_scheme != NULL) {
+		log_message(STORE_LOGLVL_ERR, "init_storage_backend: %s could not detect URL scheme at %s (code %d)", options, state->errorPos, state->errorCode);
+		return NULL;
+	}
+	log_message(STORE_LOGLVL_DEBUG, "init_storage_backend: parsed %s into scheme=%s", store_uri_scheme);
+	switch(store_uri_scheme) {
+        case "rados":
+			log_message(STORE_LOGLVL_DEBUG, "init_storage_backend: initialising rados storage backend at: %s", options);
+			store = init_storage_rados(options);
+			return store;
+		case "memcached":
+			log_message(STORE_LOGLVL_DEBUG, "init_storage_backend: initialising memcached storage backend at: %s", options);
+			memcached_config = sprintf("--server %s", uri_fetch_part(&store_uri->hostText)
+			store = init_storage_memcached(memcached_config);
+			return store;
+		case "ro_http_proxy":
+			log_message(STORE_LOGLVL_DEBUG, "init_storage_backend: initialising ro_http_proxy storage backend at: %s", options);
+			store = init_storage_ro_http_proxy(options);
+			return store;
+		case "null":
+			log_message(STORE_LOGLVL_DEBUG, "init_storage_backend: initialising null storage backend at: %s", options);
+			store = init_storage_null();
+			return store;
+	}
     log_message(STORE_LOGLVL_ERR, "init_storage_backend: No valid storage backend found for options: %s", options);
 
     return store;
+}
+
+
+char *
+uri_fetch_part(UriTextRangeA *part)
+{
+    char *contents = NULL;
+    int length     = length_of(part);
+
+    if (length > 0) {
+        contents = calloc(1, sizeof(char) * (length + 1));
+        strncpy(contents, part->first, length);
+    }
+
+    return contents;
 }
